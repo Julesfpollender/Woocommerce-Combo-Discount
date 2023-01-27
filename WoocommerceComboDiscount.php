@@ -1,9 +1,9 @@
 <?php
 /*
-Plugin Name: Extend WooCommerce Combo Discount
+Plugin Name: Woocommerce Combo Discount
 Plugin URI: https://www.eqnox.ca/
 Description: Add cart discount when you reach certains categorie count
-Version: 0.1.0
+Version: 0.1.1
 Author: Jules favreau-Pollender
 Author URI: https://www.eqnox.ca/
 License: GPLv2 or later
@@ -50,22 +50,38 @@ class WCExtendComboClass {
 
   public function applyMatchedCoupons() {
     $coupons = $this->getCoupons();
-
+    
+    $categoryId2For1Savon = 1084;
+    $categoryId2For1Retailles = 1085;
+    $category2For1SavonQty = $this->getQuantitesOfProductWithLeastOneCategory(array($categoryId2For1Savon));
+    $this->apply2For1CouponIfRequired($coupons, floor($category2For1SavonQty / 2), '2 pour 1 - savon', 8.99);
+    $category2For1RetailleQty = $this->getQuantitesOfProductWithLeastOneCategory(array($categoryId2For1Retailles));
+    $this->apply2For1CouponIfRequired($coupons, floor($category2For1RetailleQty / 2), '2 pour 1 - retailles', 10.49);
+    
     $categoryIdComboFr = 264;
     $categoryIdComboEn = 697;
-    $categoryComboQty = $this->getQuantitesOfItemWithLeastOneCategory(array($categoryIdComboFr, $categoryIdComboEn));
-    $this->applyComboCouponIfRequired($coupons, $categoryComboQty);
+    $categoryComboQty = $this->getQuantitesOfProductWithLeastOneCategory(array($categoryIdComboFr, $categoryIdComboEn));
+    $conflicting2For1AndComboQty = $this->getQuantitesOfProductWithAllCategories(array($categoryIdComboFr, $categoryId2For1Savon));
+    $this->applyComboCouponIfRequired($coupons, $categoryComboQty - floor($conflicting2For1AndComboQty / 2) * 2, 'combo');
 
     $cartAmountTrigger = 35;
     $this->applyFreeGiftCouponIfRequired($coupons, $cartAmountTrigger);
   }
 
-  private function applyComboCouponIfRequired($coupons, $comboQty) {
-    $comboCode = 'combo ' . $comboQty;
-    $this->resetPreviousComboDiscount($coupons);
-    
-    $discount = $this->getComboDiscount($comboQty);
-    if($discount === 0){
+  private function apply2For1CouponIfRequired($coupons, $freeProductQty, $baseCode, $productUnitPrice) {
+    $comboCode = $baseCode . ' (' . $freeProductQty . 'x)';
+    $this->applyCouponIfRequired($coupons, $baseCode, $comboCode, $freeProductQty * $productUnitPrice);
+  }
+
+  private function applyComboCouponIfRequired($coupons, $comboQty, $baseCode) {
+    $comboCode = $baseCode . ' ' . $comboQty;
+    $this->applyCouponIfRequired($coupons, $baseCode, $comboCode, $this->getComboDiscount($comboQty));
+  }
+
+  private function applyCouponIfRequired($coupons, $baseCode, $comboCode, $discount) {
+    $this->removePreviousSameTypeDiscount($coupons, $baseCode);
+
+    if($discount == 0){
       return;
     }
 
@@ -83,7 +99,7 @@ class WCExtendComboClass {
     $this->updateCoupon($foundComboCoupon->ID, $discount);
   }
 
-  private function getQuantitesOfItemWithLeastOneCategory($categoryIds) {
+  private function getQuantitesOfProductWithLeastOneCategory($categoryIds) {
     $quantities = WC()->cart->get_cart_item_quantities();
     if ($quantities == 0) {
       return 0;
@@ -95,12 +111,40 @@ class WCExtendComboClass {
     foreach ($quantities as $productId => $quantity) {
       $productCategories = get_the_terms($productId, 'product_cat');
       if (is_array($productCategories) || is_object($productCategories)) {
-        // check the categories for our desired one
-        foreach ($productCategories as $category) {
-          // if we find it, add the line item quantity to the category total
-          if (in_array($category->term_id, $categoryIds)) {
+        foreach ($productCategories as $productCategory) {
+          if (in_array($productCategory->term_id, $categoryIds)) {
             $categoryQty += $quantity;
+            break;
           }
+        }
+      }
+    }
+
+    return $categoryQty;
+  }
+
+  private function getQuantitesOfProductWithAllCategories($categoryIds) {
+    $quantities = WC()->cart->get_cart_item_quantities();
+    if ($quantities == 0) {
+      return 0;
+    }
+
+    $categoryQty = 0;
+
+    // Loop through cart items
+    foreach ($quantities as $productId => $quantity) {
+      $productCategories = get_the_terms($productId, 'product_cat');
+      if (is_array($productCategories) || is_object($productCategories)) {
+        $allFound = true;
+        foreach ($categoryIds as $categoryId) {
+          $found = current(array_filter($productCategories, function($productCategory) use($categoryId) { return $productCategory->term_id == $categoryId; }));
+          if (!$found) {
+            $allFound = false;
+          }
+        }
+
+        if($allFound){
+          $categoryQty += $quantity;
         }
       }
     }
@@ -120,9 +164,9 @@ class WCExtendComboClass {
     return 1 * $quantity;
   }
 
-  private function resetPreviousComboDiscount($coupons) {
+  private function removePreviousSameTypeDiscount($coupons, $baseCode) {
     foreach ($coupons as $coupon) {
-      if (strpos($coupon->post_title, 'combo') !== false) {
+      if (strpos($coupon->post_title, $baseCode) !== false) {
         WC()->cart->remove_coupon($coupon->post_title);
       }
     }
