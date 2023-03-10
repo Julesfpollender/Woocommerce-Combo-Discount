@@ -24,6 +24,7 @@ class WCExtendComboClass {
   function __construct() {
     // We safely integrate with WooCommerce with this hook
     add_action('init', array($this, 'integrateWithWC'));
+    add_action('init', array( $this, 'load_classes' ) );
 
     add_action('woocommerce_add_to_cart', array($this, 'applyMatchedCoupons'));
     add_action('woocommerce_cart_item_removed', array($this, 'applyMatchedCoupons'));
@@ -31,6 +32,7 @@ class WCExtendComboClass {
     add_action('woocommerce_update_cart_action_cart_updated', array($this, 'applyMatchedCoupons'));
     // add_action('woocommerce_checkout_update_order_review', array( $this,'applyMatchedCoupons'));
     // add_action('woocommerce_before_checkout_form', array( $this,'applyMatchedCoupons'));
+    
 
     // Load translation file
     add_action('plugins_loaded', array($this, 'loadTranslation'));
@@ -48,29 +50,49 @@ class WCExtendComboClass {
     }
   }
 
-  public function applyMatchedCoupons() {
-    $coupons = $this->getCoupons();
-    
-    $categoryId2For1Savon = 1084;
-    $categoryId2For1Retailles = 1085;
-    $category2For1SavonQty = $this->getQuantitesOfProductWithLeastOneCategory(array($categoryId2For1Savon));
-    $this->apply2For1CouponIfRequired($coupons, floor($category2For1SavonQty / 2), '2 pour 1 - savon', 8.99);
-    $category2For1RetailleQty = $this->getQuantitesOfProductWithLeastOneCategory(array($categoryId2For1Retailles));
-    $this->apply2For1CouponIfRequired($coupons, floor($category2For1RetailleQty / 2), '2 pour 1 - retailles', 10.49);
-    
-    $categoryIdComboFr = 264;
-    $categoryIdComboEn = 697;
-    $categoryComboQty = $this->getQuantitesOfProductWithLeastOneCategory(array($categoryIdComboFr, $categoryIdComboEn));
-    $conflicting2For1AndComboQty = $this->getQuantitesOfProductWithAllCategories(array($categoryIdComboFr, $categoryId2For1Savon));
-    $this->applyComboCouponIfRequired($coupons, $categoryComboQty - floor($conflicting2For1AndComboQty / 2) * 2, 'combo');
-
-    $cartAmountTrigger = 35;
-    $this->applyFreeGiftCouponIfRequired($coupons, $cartAmountTrigger);
+  public function load_classes() {
+    require_once(plugin_dir_path( __FILE__ ) . 'classes/Coupons.php');
   }
 
-  private function apply2For1CouponIfRequired($coupons, $freeProductQty, $baseCode, $productUnitPrice) {
-    $comboCode = $baseCode . ' (' . $freeProductQty . 'x)';
-    $this->applyCouponIfRequired($coupons, $baseCode, $comboCode, $freeProductQty * $productUnitPrice);
+  public function applyMatchedCoupons() {
+    $coupons = new Coupons();
+
+    $isFreeGiftActive = true;
+    $freeGiftCartAmountTrigger = 59;
+    $freeGiftProductName = 'Shampoing solide framboise';
+
+    $category2For1Savon = $this->getCategoryBySlug('2pour1-savon');
+    $category2For1Retailles = $this->getCategoryBySlug('2pour1-retailles');
+    $category2For1Cupcake = $this->getCategoryBySlug('2pour1-cupcake');
+
+    $this->apply2For1CouponIfRequired($coupons, $category2For1Savon);
+    $this->apply2For1CouponIfRequired($coupons, $category2For1Retailles);
+    $this->apply2For1CouponIfRequired($coupons, $category2For1Cupcake);
+    
+    $categoryIdComboFr = $this->getCategoryBySlug('savon-en-barre')->term_id;
+    $categoryIdComboEn = $this->getCategoryBySlug('bar-soap')->term_id;
+    $categoryComboQty = $this->getQuantitesOfProductWithLeastOneCategory(array($categoryIdComboFr, $categoryIdComboEn));
+    $conflicting2For1AndComboQty = $this->getQuantitesOfProductWithAllCategories(array($categoryIdComboFr, $category2For1Savon->term_id));
+    $this->applyComboCouponIfRequired($coupons, $categoryComboQty - floor($conflicting2For1AndComboQty / 2) * 2, 'combo');
+
+    if($isFreeGiftActive){
+      $this->applyFreeGiftCouponIfRequired($coupons, $freeGiftCartAmountTrigger, $freeGiftProductName);
+    }
+  }
+
+  private function apply2For1CouponIfRequired($coupons, $category2For1){
+    $category2For1Qty = $this->getQuantitesOfProductWithLeastOneCategory(array($category2For1->term_id));
+    $freeProductQty = floor($category2For1Qty / 2);
+    $baseCode = $category2For1->name;
+    $couponCode = $baseCode . ' (' . $freeProductQty . 'x)';
+    $productUnitPrice = 0;
+    $products = $this->getProductsOfCategory($category2For1->slug);
+    $product = array_pop($products);
+    if($product != null){
+      $productUnitPrice = $product->get_price();
+    }
+    
+    $this->applyCouponIfRequired($coupons, $baseCode, $couponCode, $freeProductQty * $productUnitPrice);
   }
 
   private function applyComboCouponIfRequired($coupons, $comboQty, $baseCode) {
@@ -85,18 +107,16 @@ class WCExtendComboClass {
       return;
     }
 
-    $this->updateOrCreateCoupon($coupons, $comboCode, $discount);
+    $coupons->updateOrCreateCoupon($comboCode, $discount);
     WC()->cart->apply_coupon($comboCode);
   }
 
-  private function updateOrCreateCoupon($coupons, $comboCode, $discount){
-    $foundComboCoupon = current(array_filter($coupons, function($coupon) use ($comboCode) { return $coupon->post_title === $comboCode; }));
-    if (!$foundComboCoupon) {
-      $this->createCoupon($comboCode, $discount);
-      return;
-    }
-    
-    $this->updateCoupon($foundComboCoupon->ID, $discount);
+  private function getCategoryBySlug($categorySlug){
+    return get_term_by( 'slug', $categorySlug, 'product_cat' );
+  }
+
+  private function getProductsOfCategory($categorySlug){
+    return wc_get_products(array('category' => array($categorySlug)));
   }
 
   private function getQuantitesOfProductWithLeastOneCategory($categoryIds) {
@@ -165,69 +185,31 @@ class WCExtendComboClass {
   }
 
   private function removePreviousSameTypeDiscount($coupons, $baseCode) {
-    foreach ($coupons as $coupon) {
+    foreach ($coupons->getCoupons() as $coupon) {
       if (strpos($coupon->post_title, $baseCode) !== false) {
         WC()->cart->remove_coupon($coupon->post_title);
       }
     }
   }
 
-  private function applyFreeGiftCouponIfRequired($coupons, $cartAmountTrigger) {
-    $orderTotal = WC()->cart->get_subtotal();
-    $couponCode = 'Cadeau';
+  private function applyFreeGiftCouponIfRequired($coupons, $freeGiftCartAmountTrigger, $productName) {
+    WC()->cart->calculate_totals(); // Required otherwhise the total is missing the last added product
+    $orderTotal = WC()->cart->get_cart_contents_total();
+    $couponCode = 'Gratuit ' . $productName;
 
-    $this->updateOrCreateCoupon($coupons, $couponCode, 0);
+    $coupons->updateOrCreateCoupon($couponCode, 0);
 
-    if ($orderTotal >= $cartAmountTrigger) {
+    if ($orderTotal >= $freeGiftCartAmountTrigger) {
       if (!WC()->cart->has_discount($couponCode)) {
         WC()->cart->apply_coupon($couponCode);
       }
     }
 
-    if ($orderTotal < $cartAmountTrigger) {
+    if ($orderTotal < $freeGiftCartAmountTrigger) {
       if (WC()->cart->has_discount($couponCode)) {
         WC()->cart->remove_coupon($couponCode);
       }
     }
-  }
-
-  private function getCoupons() {
-    $args = array(
-      'posts_per_page' => -1,
-      'orderby' => 'title',
-      'order' => 'asc',
-      'post_type' => 'shop_coupon',
-      'post_status' => 'publish',
-    );
-    return get_posts($args);
-  }
-
-  private function createCoupon($couponCode, $amount) {
-    $coupon = array(
-      'post_title' => $couponCode,
-      'post_content' => '',
-      'post_status' => 'publish',
-      'post_author' => 1,
-      'post_type' => 'shop_coupon'
-    );
-
-    $newCouponId = wp_insert_post($coupon);
-    $this->updateCoupon($newCouponId, $amount);
-  }
-
-  private function updateCoupon($couponId, $amount) {
-    $discountType = 'fixed_cart'; // Type: fixed_cart, percent, fixed_product, percent_product
-
-    // Add meta
-    update_post_meta($couponId, 'discount_type', $discountType);
-    update_post_meta($couponId, 'coupon_amount', $amount);
-    update_post_meta($couponId, 'individual_use', 'no');
-    update_post_meta($couponId, 'product_ids', '');
-    update_post_meta($couponId, 'exclude_product_ids', '');
-    update_post_meta($couponId, 'usage_limit', '');
-    update_post_meta($couponId, 'expiry_date', '');
-    update_post_meta($couponId, 'apply_before_tax', 'yes');
-    update_post_meta($couponId, 'free_shipping', 'no');
   }
 
   public function loadTranslation() {

@@ -37,16 +37,17 @@ This plugin contains all of my awesome custom functions:
 
 = How to enable free gift coupon =
 
-1. Change the `$cartAmountTrigger` for free gift if desired, (default=35$).
+1. Active with `$isFreeGiftActive` boolean (default=true)
+2. Change the `$freeGiftCartAmountTrigger` for free gift (default=59$).
+3. Change free product name `$freeGiftProductName` to be displayed on the coupon.
 
 = How to enable 2 for 1 coupon(s) =
 
-1. Set desired category id(s) `$categoryId2For1Savon` for 2 for 1 to be applied on this category.
-2. Change the amount and coupon name if desired.
+1. Set desired category slug(s) for 2 for 1 to be applied on this category.
 
 == Changelog ==
 
-= 0.1.1 (2023-01-27) =
+= 0.1.1 (2023-03-10) =
 
 * 2 for 1 Discount by product category
 
