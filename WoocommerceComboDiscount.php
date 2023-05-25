@@ -57,9 +57,9 @@ class WCExtendComboClass {
   public function applyMatchedCoupons() {
     $coupons = new Coupons();
 
-    $isFreeGiftActive = true;
-    $freeGiftCartAmountTrigger = 59;
-    $freeGiftProductName = 'Shampoing solide framboise';
+    $isFreeGiftActive = $this->isBetweenDates('2023-05-26 00:00:00', '2023-05-28 23:59:59');
+    $freeGiftCartAmountTrigger = 0;
+    $freeGiftProductName = 'Boîte de retailles';
 
     $category2For1Savon = $this->getCategoryBySlug('2pour1-savon');
     $category2For1Retailles = $this->getCategoryBySlug('2pour1-retailles');
@@ -109,6 +109,16 @@ class WCExtendComboClass {
 
     $coupons->updateOrCreateCoupon($comboCode, $discount);
     WC()->cart->apply_coupon($comboCode);
+  }
+
+  private function isBetweenDates($dateBegin, $dateEnd){
+    date_default_timezone_set('America/New_York');
+
+    $today = strtotime(date("Y-m-d H:i:s"));
+    $dateBegin = strtotime($dateBegin);
+    $dateEnd = strtotime($dateEnd);
+        
+    return $today >= $dateBegin && $today <= $dateEnd;
   }
 
   private function getCategoryBySlug($categorySlug){
