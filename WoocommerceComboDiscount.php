@@ -58,7 +58,7 @@ class WCExtendComboClass {
     $coupons = new Coupons();
 
     $isFreeGiftActive = $this->isBetweenDates('2023-05-26 00:00:00', '2023-05-28 23:59:59');
-    $freeGiftCartAmountTrigger = 0;
+    $freeGiftCartAmountTrigger = 55;
     $freeGiftProductName = 'Boîte de retailles';
 
     $category2For1Savon = $this->getCategoryBySlug('2pour1-savon');
@@ -70,8 +70,7 @@ class WCExtendComboClass {
     $this->apply2For1CouponIfRequired($coupons, $category2For1Cupcake);
     
     $categoryIdComboFr = $this->getCategoryBySlug('savon-en-barre')->term_id;
-    $categoryIdComboEn = $this->getCategoryBySlug('bar-soap')->term_id;
-    $categoryComboQty = $this->getQuantitesOfProductWithLeastOneCategory(array($categoryIdComboFr, $categoryIdComboEn));
+    $categoryComboQty = $this->getQuantitesOfProductWithLeastOneCategory(array($categoryIdComboFr));
     $conflicting2For1AndComboQty = $this->getQuantitesOfProductWithAllCategories(array($categoryIdComboFr, $category2For1Savon->term_id));
     $this->applyComboCouponIfRequired($coupons, $categoryComboQty - floor($conflicting2For1AndComboQty / 2) * 2, 'combo');
 
